@@ -88,6 +88,25 @@ See CONTRIBUTING.md for full setup details and dependency requirements.
 
 ---
 
+## Workspace and Disk Hygiene
+
+- Use `~/Developer/buzz` as the single canonical clone.
+- Create issue branches as Git worktrees from that clone under
+  `~/Developer/buzz-worktrees/`. Never create another Buzz clone per issue.
+- Keep all Buzz work under `~/Developer`, never `~/Documents`.
+- Reuse the shared Cargo target at `~/Developer/.cargo-target`. It is configured
+  in `~/.cargo/config.toml` and must apply across Buzz worktrees.
+- Run `df -h ~` before build-heavy work. Do not start or continue builds that
+  would leave the data volume below 15% free; clean derived artifacts first.
+- Once a branch is pushed and its PR is open, verify the worktree is clean and
+  its HEAD is contained in the fork branch, run Cargo cleanup, remove the
+  worktree with `git worktree remove`, and run
+  `git worktree prune --expire=now` in the canonical clone.
+- Never remove a worktree with uncommitted source changes. Cargo build artifacts
+  may be cleaned, but the checkout and source changes must be preserved.
+
+---
+
 ## Quality Gates
 
 Run `just ci` before every PR — it runs `fmt` + `clippy` + desktop lint +
