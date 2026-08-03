@@ -1595,6 +1595,49 @@ async fn test_nip29_standard_client_flow() {
     client.disconnect().await.expect("clean disconnect");
 }
 
+/// A reaction to a global event must stay on the channel-less ingest path.
+/// Regression test for #2348: trace emission used to unwrap the absent channel
+/// after the reaction and event rows had already been committed.
+#[tokio::test]
+#[ignore]
+async fn test_channel_less_reaction_is_accepted() {
+    let url = relay_url();
+    let keys = Keys::generate();
+    let mut client = BuzzTestClient::connect(&url, &keys)
+        .await
+        .expect("connect and authenticate via NIP-42");
+
+    let target = EventBuilder::new(
+        Kind::TextNote,
+        format!("global-reaction-target-{}", Uuid::new_v4()),
+    )
+    .sign_with_keys(&keys)
+    .expect("sign global target");
+    let target_id = target.id.to_hex();
+    let target_ok = client.send_event(target).await.expect("send global target");
+    assert!(
+        target_ok.accepted,
+        "relay should accept global reaction target: {}",
+        target_ok.message
+    );
+
+    let reaction = EventBuilder::new(Kind::Reaction, "+")
+        .tags([Tag::parse(["e", target_id.as_str()]).expect("reaction e tag")])
+        .sign_with_keys(&keys)
+        .expect("sign channel-less reaction");
+    let reaction_ok = client
+        .send_event(reaction)
+        .await
+        .expect("send channel-less reaction");
+    assert!(
+        reaction_ok.accepted,
+        "relay should accept channel-less reaction: {}",
+        reaction_ok.message
+    );
+
+    client.disconnect().await.expect("clean disconnect");
+}
+
 /// Client-submitted kind:44100 (member-added notification) must be rejected.
 /// Only the relay keypair may sign these events.
 #[tokio::test]
