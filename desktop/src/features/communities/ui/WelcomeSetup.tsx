@@ -1,6 +1,8 @@
 import * as React from "react";
-import { Check, Copy } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { Check, Copy, ExternalLink } from "lucide-react";
 
+import { BUZZ_NODE_SELF_HOSTING_URL } from "@/features/communities/communityHosting";
 import { HostedCommunityOnboarding } from "@/features/communities/ui/HostedCommunityOnboarding";
 import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
 import { InviteRedeemForm } from "@/features/onboarding/ui/InviteRedeemForm";
@@ -46,6 +48,7 @@ export function WelcomeSetup({
   // behind the modal never changes out from under the user.
   const [isHostedSignInOpen, setIsHostedSignInOpen] = React.useState(false);
   const [copiedNpub, setCopiedNpub] = React.useState(false);
+  const [hostingGuideError, setHostingGuideError] = React.useState(false);
   const communityOnboarding = useCommunityOnboarding();
   const identityQuery = useIdentityQuery();
   const systemColorScheme = useSystemColorScheme();
@@ -116,12 +119,18 @@ export function WelcomeSetup({
             >
               <div className="w-full max-w-[760px]">
                 <h1 className="text-title font-normal">
-                  Join or create a community
+                  Join or host a community
                 </h1>
-                <p className="mt-3 text-sm leading-6 text-foreground/80">
-                  Join with an invite, create your own community, or reconnect
-                  one you already have.
+                <p className="mt-3 text-pretty text-sm leading-6 text-foreground/80">
+                  Join with an invite, host a managed community, or reconnect
+                  one you already have. Running a full Buzz node is a separate
+                  self-hosting path.
                 </p>
+                {hostingGuideError ? (
+                  <p className="mt-2 text-sm text-destructive" role="alert">
+                    Could not open the self-hosting guide in your browser.
+                  </p>
+                ) : null}
               </div>
               <div className="flex w-full flex-1 translate-y-16 flex-col items-center justify-center gap-20 py-8">
                 <Card
@@ -147,7 +156,7 @@ export function WelcomeSetup({
                     onClick={() => setIsHostedSignInOpen(true)}
                     type="button"
                   >
-                    Create a community
+                    Host a new community
                   </button>
                 </Card>
                 <Card
@@ -165,6 +174,21 @@ export function WelcomeSetup({
                 </Card>
               </div>
               <OnboardingFooter>
+                <Button
+                  className="h-10 rounded-full px-6"
+                  data-testid="community-choice-host-node"
+                  onClick={() => {
+                    setHostingGuideError(false);
+                    void openUrl(BUZZ_NODE_SELF_HOSTING_URL).catch(() => {
+                      setHostingGuideError(true);
+                    });
+                  }}
+                  type="button"
+                  variant="ghost"
+                >
+                  Host a full Buzz node
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
                 <Button
                   className="h-9 rounded-full bg-foreground/10 px-6 hover:bg-foreground/15"
                   data-testid="welcome-setup-back"

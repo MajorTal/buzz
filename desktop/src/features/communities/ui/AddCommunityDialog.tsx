@@ -1,7 +1,16 @@
 import * as React from "react";
-import { ArrowLeft, ChevronRight, Link2, Plus } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  ArrowLeft,
+  ChevronRight,
+  ExternalLink,
+  Link2,
+  Plus,
+  Server,
+} from "lucide-react";
 
 import type { AddCommunityPrefillRequest } from "@/features/communities/addCommunityPrefill";
+import { BUZZ_NODE_SELF_HOSTING_URL } from "@/features/communities/communityHosting";
 import { HostedCommunityCreateFlow } from "@/features/communities/ui/HostedCommunityCreateFlow";
 import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
 import { InviteRedeemForm } from "@/features/onboarding/ui/InviteRedeemForm";
@@ -12,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
+import { Button } from "@/shared/ui/button";
 
 type AddCommunityDialogProps = {
   prefill?: AddCommunityPrefillRequest | null;
@@ -22,7 +32,7 @@ type AddCommunityDialogProps = {
   onOpenChange: (open: boolean) => void;
 };
 
-type AddCommunityMode = "choose" | "create" | "join";
+type AddCommunityMode = "choose" | "create" | "join" | "node";
 
 const OPTION_CLASS =
   "flex w-full items-center gap-3 rounded-xl border border-border/70 bg-muted/30 px-4 py-4 text-left transition-colors duration-150 ease-out hover:bg-muted/60 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
@@ -35,6 +45,9 @@ export function AddCommunityDialog({
   const communityOnboarding = useCommunityOnboarding();
   const [mode, setMode] = React.useState<AddCommunityMode>("choose");
   const [joinError, setJoinError] = React.useState<string | null>(null);
+  const [nodeGuideError, setNodeGuideError] = React.useState<string | null>(
+    null,
+  );
   const appliedPrefillId = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -48,6 +61,7 @@ export function AddCommunityDialog({
     onOpenChange(false);
     setMode("choose");
     setJoinError(null);
+    setNodeGuideError(null);
   }, [onOpenChange]);
 
   const startConnection = React.useCallback(
@@ -83,17 +97,21 @@ export function AddCommunityDialog({
 
   const title =
     mode === "create"
-      ? "Create a new community"
+      ? "Host a new community"
       : mode === "join"
         ? "Join an existing community"
-        : "Add community";
+        : mode === "node"
+          ? "Host a Buzz node"
+          : "Add community";
 
   const description =
     mode === "create"
-      ? "Opens Builderlab in your browser."
+      ? "Create a managed community on shared Buzz infrastructure."
       : mode === "join"
         ? "Use the community URL or invite link you received."
-        : "Create a new community or join one you already have.";
+        : mode === "node"
+          ? "Run the complete Buzz server stack on infrastructure you control."
+          : "Host a new community, join one, or run your own Buzz node.";
 
   return (
     <Dialog
@@ -116,6 +134,7 @@ export function AddCommunityDialog({
                 data-testid="add-community-back"
                 onClick={() => {
                   setJoinError(null);
+                  setNodeGuideError(null);
                   setMode("choose");
                 }}
                 type="button"
@@ -146,10 +165,10 @@ export function AddCommunityDialog({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium text-foreground">
-                    Create a new community
+                    Host a new community
                   </span>
-                  <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                    Claim a Buzz address for your team.
+                  <span className="mt-0.5 block text-pretty text-xs leading-5 text-muted-foreground">
+                    Managed by Builderlab on shared Buzz infrastructure.
                   </span>
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" />
@@ -174,6 +193,26 @@ export function AddCommunityDialog({
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" />
               </button>
+
+              <button
+                className={OPTION_CLASS}
+                data-testid="add-community-host-node"
+                onClick={() => setMode("node")}
+                type="button"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Server className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-foreground">
+                    Host a Buzz node
+                  </span>
+                  <span className="mt-0.5 block text-pretty text-xs leading-5 text-muted-foreground">
+                    Run the full Buzz server stack on your own infrastructure.
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" />
+              </button>
             </div>
           ) : mode === "join" ? (
             <InviteRedeemForm
@@ -193,6 +232,52 @@ export function AddCommunityDialog({
               }
               variant="add-community"
             />
+          ) : mode === "node" ? (
+            <div className="space-y-5">
+              <p className="text-pretty text-sm leading-6 text-muted-foreground">
+                A Buzz node is a standalone deployment of the relay, database,
+                cache, object storage, media, and Git services. It is separate
+                from a community hosted for you by Builderlab.
+              </p>
+              <p className="text-pretty text-sm leading-6 text-muted-foreground">
+                Follow the deployment guide to start the node. When it is ready,
+                return to Buzz and connect using its community URL.
+              </p>
+              {nodeGuideError ? (
+                <p className="text-sm text-destructive" role="alert">
+                  {nodeGuideError}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap justify-end gap-2 pt-1">
+                <Button
+                  onClick={() => {
+                    setNodeGuideError(null);
+                    setMode("join");
+                  }}
+                  size="lg"
+                  type="button"
+                  variant="outline"
+                >
+                  I already run a node
+                </Button>
+                <Button
+                  data-testid="open-buzz-node-hosting-guide"
+                  onClick={() => {
+                    setNodeGuideError(null);
+                    void openUrl(BUZZ_NODE_SELF_HOSTING_URL).catch(() => {
+                      setNodeGuideError(
+                        "Could not open the self-hosting guide in your browser.",
+                      );
+                    });
+                  }}
+                  size="lg"
+                  type="button"
+                >
+                  Open self-hosting guide
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           ) : (
             <HostedCommunityCreateFlow onComplete={handleClose} />
           )}

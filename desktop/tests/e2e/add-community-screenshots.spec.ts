@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
@@ -48,6 +48,8 @@ test.beforeEach(async ({ page }) => {
 test("capture: add-community choices", async ({ page }) => {
   const dialog = page.getByTestId("add-community-dialog");
   await dialog.waitFor();
+  await page.getByText("Host a new community", { exact: true }).waitFor();
+  await page.getByText("Host a Buzz node", { exact: true }).waitFor();
   await waitForAnimations(page);
   await dialog.screenshot({ path: `${OUTDIR}/01-choices.png` });
 });
@@ -66,4 +68,34 @@ test("capture: create a new community", async ({ page }) => {
   await page.getByLabel("Community address").waitFor();
   await waitForAnimations(page);
   await dialog.screenshot({ path: `${OUTDIR}/03-create.png` });
+});
+
+test("capture: full Buzz node hosting is a separate path", async ({ page }) => {
+  await page.getByTestId("add-community-host-node").click();
+  const dialog = page.getByTestId("add-community-dialog");
+  await page
+    .getByText("A Buzz node is a standalone deployment", { exact: false })
+    .waitFor();
+  await waitForAnimations(page);
+  await dialog.screenshot({ path: `${OUTDIR}/04-host-node.png` });
+
+  await page.getByTestId("open-buzz-node-hosting-guide").click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            (
+              window as Window & {
+                __BUZZ_E2E_COMMAND_LOG__?: Array<{
+                  command: string;
+                  payload: { url?: string };
+                }>;
+              }
+            ).__BUZZ_E2E_COMMAND_LOG__ ?? []
+          ).find(({ command }) => command === "plugin:opener|open_url")?.payload
+            .url,
+      ),
+    )
+    .toBe("https://github.com/block/buzz/tree/main/deploy/compose#readme");
 });

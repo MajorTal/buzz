@@ -31,6 +31,31 @@ test.beforeEach(async ({ page }) => {
   await openSettings(page, "hosted-communities");
 });
 
+test("full node hosting opens the self-hosting guide", async ({ page }) => {
+  const hostNode = page.getByTestId("host-full-buzz-node");
+  await expect(hostNode).toBeVisible();
+  await hostNode.click();
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            (
+              window as Window & {
+                __BUZZ_E2E_COMMAND_LOG__?: Array<{
+                  command: string;
+                  payload: { url?: string };
+                }>;
+              }
+            ).__BUZZ_E2E_COMMAND_LOG__ ?? []
+          ).find(({ command }) => command === "plugin:opener|open_url")?.payload
+            .url,
+      ),
+    )
+    .toBe("https://github.com/block/buzz/tree/main/deploy/compose#readme");
+});
+
 test("capture: community icon picker sits beside its hosted community", async ({
   page,
 }) => {

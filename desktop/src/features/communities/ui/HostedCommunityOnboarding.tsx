@@ -503,11 +503,11 @@ export function HostedCommunityOnboarding({
                   Sign in to continue
                 </Button>
               )}
-              {/* Quiet breadcrumb: Buzz itself is open source; this hosted
-                    relay is the one account-backed piece of the flow. */}
-              <p className="mt-6 w-full border-t border-foreground/10 pt-4 text-xs leading-5 text-foreground/45">
-                Buzz is open source. Builderlab hosts the relay for this
-                account.
+              {/* Quiet breadcrumb: distinguish managed community hosting from
+                  operating a standalone Buzz node. */}
+              <p className="mt-6 w-full border-t border-foreground/10 pt-4 text-pretty text-xs leading-5 text-foreground/45">
+                Buzz is open source. Builderlab hosts this community on shared
+                Buzz infrastructure; it does not provision a standalone node.
               </p>
             </>
           ) : !identity ? (
@@ -581,12 +581,12 @@ export function HostedCommunityOnboarding({
   return (
     <div className="flex min-h-[calc(100dvh-15.625rem)] w-full max-w-[920px] flex-col items-center text-center">
       <h1 className="max-w-[620px] text-title font-normal leading-[1.18] tracking-[-0.025em]">
-        {hasCommunities ? "Choose a community" : "Create a community"}
+        {hasCommunities ? "Choose a community" : "Host a new community"}
       </h1>
-      <p className="mx-auto mt-2 max-w-[560px] text-sm leading-6 text-foreground">
+      <p className="mx-auto mt-2 max-w-[560px] text-pretty text-sm leading-6 text-foreground">
         {hasCommunities
           ? "Connect one you own, or start something new."
-          : "Claim a Buzz address to get started."}
+          : "Claim a Buzz address on Builderlab’s managed infrastructure."}
       </p>
 
       <div className="flex w-full flex-1 flex-col justify-center text-left">

@@ -833,8 +833,29 @@ test("first-community choices route join, create, owner, and member intents", as
     page.getByRole("button", { name: /Join a community/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /Create a community/ }),
+    page.getByRole("button", { name: /Host a new community/ }),
   ).toBeVisible();
+  const hostNode = page.getByTestId("community-choice-host-node");
+  await expect(hostNode).toBeVisible();
+  await hostNode.click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            (
+              window as Window & {
+                __BUZZ_E2E_COMMAND_LOG__?: Array<{
+                  command: string;
+                  payload: { url?: string };
+                }>;
+              }
+            ).__BUZZ_E2E_COMMAND_LOG__ ?? []
+          ).find(({ command }) => command === "plugin:opener|open_url")?.payload
+            .url,
+      ),
+    )
+    .toBe("https://github.com/block/buzz/tree/main/deploy/compose#readme");
   const existing = page.getByRole("button", {
     name: /I already have a community/,
   });
@@ -1158,7 +1179,7 @@ test("first-community X cancels a pending sign-in", async ({ page }) => {
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Close" }).click();
   await expect(
-    page.getByRole("button", { name: /Create a community/ }),
+    page.getByRole("button", { name: /Host a new community/ }),
   ).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => window.__BUZZ_E2E_COMMANDS__ ?? []))
@@ -1338,7 +1359,7 @@ test("first-community shows the scenario cards for localhost", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("button", {
-      name: /Create a community/,
+      name: /Host a new community/,
     }),
   ).toBeVisible();
 

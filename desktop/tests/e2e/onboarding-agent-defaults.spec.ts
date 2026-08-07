@@ -611,7 +611,7 @@ test("Finish waits for the latest rapid harness choice to persist", async ({
   await expect(finish).toBeDisabled();
   await expect(finish).toBeEnabled({ timeout: 2_000 });
   await finish.click();
-  await expect(page.getByText("Join or create a community")).toBeVisible();
+  await expect(page.getByText("Join or host a community")).toBeVisible();
   expect(await readSavedRuntime(page)).toBe("codex");
 });
 
@@ -872,7 +872,7 @@ test("Finish stays disabled until a provider-required harness is fully configure
 
   await expect(finish).toBeEnabled();
   await finish.click();
-  await expect(page.getByText("Join or create a community")).toBeVisible();
+  await expect(page.getByText("Join or host a community")).toBeVisible();
   expect(await readSavedRuntime(page)).toBe("buzz-agent");
 });
 

@@ -1,5 +1,6 @@
 import * as React from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   AlertCircle,
   Archive,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { BUZZ_NODE_SELF_HOSTING_URL } from "@/features/communities/communityHosting";
 import {
   HOSTED_COMMUNITY_LIMIT as MAX_COMMUNITIES,
   HOSTED_COMMUNITY_SUFFIX as HOST_SUFFIX,
@@ -418,7 +420,25 @@ export function HostedCommunitiesSettingsCard() {
     <section className="space-y-6" data-testid="hosted-communities-settings">
       <SettingsSectionHeader
         title="Hosted communities"
-        description="Buzz works with any relay. This page is only for relay hosting provided by Block — sign in with a Builderlab account to create and manage Block-hosted communities. Builderlab sign-in is used on this page alone."
+        description="Create and manage communities hosted for you by Block on shared Buzz infrastructure. Managed community hosting is separate from operating a standalone Buzz node. Builderlab sign-in is used on this page alone."
+        action={
+          <Button
+            data-testid="host-full-buzz-node"
+            onClick={() => {
+              setError(null);
+              void openUrl(BUZZ_NODE_SELF_HOSTING_URL).catch(() => {
+                setError(
+                  "Could not open the Buzz node self-hosting guide in your browser.",
+                );
+              });
+            }}
+            size="lg"
+            variant="outline"
+          >
+            Host a Buzz node
+            <ExternalLink className="h-4 w-4" />
+          </Button>
+        }
       />
 
       {error ? (
@@ -612,7 +632,7 @@ export function HostedCommunitiesSettingsCard() {
             onSubmit={createCommunity}
           >
             <div>
-              <h3 className="font-medium">Create a community</h3>
+              <h3 className="font-medium">Host a new community</h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 Choose the address your team will use to connect.
               </p>

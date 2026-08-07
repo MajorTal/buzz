@@ -287,9 +287,10 @@ export function HostedCommunityCreateFlow({
   if (!auth) {
     return (
       <div className="space-y-5">
-        <p className="text-sm leading-6 text-muted-foreground">
-          Sign in with Builderlab to create and host a community. Buzz will open
-          your browser, then bring you back here.
+        <p className="text-pretty text-sm leading-6 text-muted-foreground">
+          Sign in with Builderlab to host a managed community on shared Buzz
+          infrastructure. This does not create a standalone Buzz node. Buzz will
+          open your browser, then bring you back here.
         </p>
         {errorBox}
         <div className="flex justify-end pt-1">
