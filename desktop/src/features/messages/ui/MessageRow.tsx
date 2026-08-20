@@ -3,6 +3,7 @@ import { AlertTriangle } from "lucide-react";
 
 import {
   depthGuideActionsEqual,
+  requestStatusEqual,
   numberArrayEqual,
   reactionsEqual,
   tagsEqual,
@@ -14,6 +15,7 @@ import {
 import type { TimelineMessage } from "@/features/messages/types";
 import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import { HuddleAttachment } from "@/features/huddle/components/HuddleAttachment";
+import { DispositionBadge } from "@/features/messages/ui/DispositionBadge";
 import { MessageReactions } from "@/features/messages/ui/MessageReactions";
 import { useReactionHandler } from "@/features/messages/ui/useReactionHandler";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
@@ -295,7 +297,7 @@ export const MessageRow = React.memo(
       message.body,
       message.tags,
     );
-    const bodyOffsetClass = emojiOnly ? "mt-1" : "-mt-0.5";
+    const bodyOffsetClass = emojiOnly ? "mt-1" : "mt-conversation-body";
 
     const { nonDmChannelNames: channelNames } = useChannelNavigation();
 
@@ -411,7 +413,7 @@ export const MessageRow = React.memo(
             <VideoReviewCommentMarkdown
               channelNames={channelNames}
               className={cn(
-                "max-w-full text-sm",
+                "max-w-full text-message",
                 emojiOnly &&
                   "text-4xl leading-tight [&_p]:leading-tight [&_img[data-custom-emoji]]:h-[1.45em] [&_img[data-custom-emoji]]:align-middle [&_button:has(img[data-custom-emoji])]:align-middle",
               )}
@@ -635,7 +637,7 @@ export const MessageRow = React.memo(
             botIdenticonValue={message.author}
           >
             <button
-              className="truncate rounded leading-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              className="truncate rounded leading-message-author focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               type="button"
             >
               {authorNode}
@@ -678,6 +680,7 @@ export const MessageRow = React.memo(
             void handleReactionSelect(emoji);
           }}
         />
+        <DispositionBadge status={message.requestStatus} />
         {reactionErrorMessage ? (
           <p className="mt-1.5 text-xs text-destructive">
             {reactionErrorMessage}
@@ -868,7 +871,7 @@ export const MessageRow = React.memo(
           className={cn(
             "group/message relative z-10 rounded-2xl transition-colors",
             playEntrance && "motion-enter-conversation",
-            "py-1",
+            "py-conversation-row",
             hoverBackground
               ? "mx-1 px-2 hover:bg-muted/50 focus-within:bg-muted/50"
               : isThreadReplyLayout
@@ -888,17 +891,21 @@ export const MessageRow = React.memo(
           {isThreadReplyLayout ? (
             <>
               {avatarGutterNode}
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <div className="flex min-w-0 flex-1 flex-col">
                 {headerNode}
-                <div className={bodyContainerClass}>{messageBodyNode}</div>
+                <div className={bodyContainerClass} data-testid="message-body">
+                  {messageBodyNode}
+                </div>
               </div>
             </>
           ) : (
             <>
               {avatarGutterNode}
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <div className="flex min-w-0 flex-1 flex-col">
                 {headerNode}
-                <div className={bodyContainerClass}>{messageBodyNode}</div>
+                <div className={bodyContainerClass} data-testid="message-body">
+                  {messageBodyNode}
+                </div>
               </div>
             </>
           )}
@@ -931,6 +938,10 @@ export const MessageRow = React.memo(
     // checks made every row re-render on every streamed event in an open
     // thread (see messageRowEquality.ts).
     reactionsEqual(prev.message.reactions, next.message.reactions) &&
+    requestStatusEqual(
+      prev.message.requestStatus,
+      next.message.requestStatus,
+    ) &&
     tagsEqual(prev.message.tags, next.message.tags) &&
     prev.message.role === next.message.role &&
     prev.message.personaDisplayName === next.message.personaDisplayName &&

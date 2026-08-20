@@ -167,6 +167,7 @@ fn boundary_huddle_stt_blocks_ncryptsec() {
         &[],
         None,
         &crate::relay::relay_api_base_url(),
+        &[],
     )
     .unwrap();
     let err = crate::huddle::pipeline::sign_and_guard_stt_body(builder, &keys).unwrap_err();
@@ -184,6 +185,7 @@ fn boundary_huddle_stt_blocks_ncryptsec() {
         &[],
         None,
         &crate::relay::relay_api_base_url(),
+        &[],
     )
     .unwrap();
     assert!(crate::huddle::pipeline::sign_and_guard_stt_body(builder, &keys).is_ok());
@@ -276,6 +278,10 @@ const EVENTS_INVENTORY: &[(&str, usize, usize)] = &[
     // Mock-relay route in its in-file tests; production publish goes through
     // the guarded boundary-1 funnel (`submit_signed_event_at_with_keys`).
     ("src/commands/personas/sharing.rs", 1, 0),
+    // Loopback submit relay in `identity_archive.rs`'s in-file regen tests;
+    // production archive/unarchive publish through the guarded boundary-1
+    // funnel via `submit_event`.
+    ("src/commands/identity_archive.rs", 1, 0),
 ];
 
 // Needles are assembled at runtime so this scan file itself contains no

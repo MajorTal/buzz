@@ -13,6 +13,7 @@ use nostr::{EventBuilder, EventId, Kind, Tag};
 use uuid::Uuid;
 
 mod message_tags;
+pub(crate) mod relay_admin;
 
 use message_tags::{
     append_client_tags, append_sent_from_thread_tag, emoji_tags, imeta_tags, mention_reference_tags,
@@ -260,6 +261,7 @@ pub fn build_message(
     link_preview_tags: &[Vec<String>],
     sent_from_thread_tag: Option<&[String]>,
     relay_base: &str,
+    request_agents: &[&str],
 ) -> Result<EventBuilder, String> {
     build_message_with_client_tags(
         channel_id,
@@ -272,6 +274,7 @@ pub fn build_message(
         link_preview_tags,
         sent_from_thread_tag,
         relay_base,
+        request_agents,
         &[],
     )
 }
@@ -293,6 +296,7 @@ pub fn build_message_with_client_tags(
     link_preview_tags: &[Vec<String>],
     sent_from_thread_tag: Option<&[String]>,
     relay_base: &str,
+    request_agents: &[&str],
     client_tags: &[Vec<String>],
 ) -> Result<EventBuilder, String> {
     if sent_from_thread_tag.is_some() && thread_ref.is_some() {
@@ -309,6 +313,26 @@ pub fn build_message_with_client_tags(
     mention_reference_tags(mention_ref_tags, &mut tags)?;
     crate::link_preview_tags::append(link_preview_tags, relay_base, &mut tags)?;
     append_sent_from_thread_tag(sent_from_thread_tag, &mut tags)?;
+    // NIP-AD: marks this message as a request awaiting a disposition, and
+    // names each agent it is addressed to. The `agent` tags are what a
+    // disposition binds against — a disposition only resolves this request
+    // if its signer is one of these pubkeys. That binding is deliberately
+    // NOT the `p` mention set: `p` includes every mentioned principal
+    // (humans CC'd on the message included), and a mentioned human must not
+    // be able to close an agent's obligation. Empty `request_agents` means
+    // this is not a request at all — the two facts cannot disagree because
+    // they are the same value. See docs/nips/NIP-AD.md.
+    if !request_agents.is_empty() {
+        tags.push(tag(vec!["t", "request"])?);
+        let mut seen = std::collections::HashSet::new();
+        for &hex in request_agents {
+            check_pubkey(hex)?;
+            let lower = hex.to_ascii_lowercase();
+            if seen.insert(lower.clone()) {
+                tags.push(tag(vec!["agent", &lower])?);
+            }
+        }
+    }
     append_client_tags(client_tags, &mut tags)?;
     Ok(EventBuilder::new(Kind::Custom(9), content).tags(tags))
 }
@@ -536,53 +560,6 @@ pub fn build_note(
     Ok(EventBuilder::new(Kind::TextNote, content).tags(tags))
 }
 
-// ── Relay admin (NIP-43) ────────────────────────────────────────────────────
-
-/// Allowed relay member roles for NIP-43 admin commands.
-const VALID_RELAY_ROLES: &[&str] = &["owner", "admin", "member"];
-
-fn check_relay_role(role: &str) -> Result<(), String> {
-    if !VALID_RELAY_ROLES.contains(&role) {
-        return Err(format!(
-            "invalid relay role \"{role}\" (expected one of: {})",
-            VALID_RELAY_ROLES.join(", ")
-        ));
-    }
-    Ok(())
-}
-
-/// Kind 9030 — add a pubkey to the relay member list.
-pub fn build_relay_admin_add(target_pubkey: &str, role: &str) -> Result<EventBuilder, String> {
-    check_pubkey(target_pubkey)?;
-    check_relay_role(role)?;
-    let tags = vec![
-        tag(vec!["p", &target_pubkey.to_ascii_lowercase()])?,
-        tag(vec!["role", role])?,
-    ];
-    Ok(EventBuilder::new(Kind::Custom(9030), "").tags(tags))
-}
-
-/// Kind 9031 — remove a pubkey from the relay member list.
-pub fn build_relay_admin_remove(target_pubkey: &str) -> Result<EventBuilder, String> {
-    check_pubkey(target_pubkey)?;
-    let tags = vec![tag(vec!["p", &target_pubkey.to_ascii_lowercase()])?];
-    Ok(EventBuilder::new(Kind::Custom(9031), "").tags(tags))
-}
-
-/// Kind 9032 — change the role of an existing relay member.
-pub fn build_relay_admin_change_role(
-    target_pubkey: &str,
-    new_role: &str,
-) -> Result<EventBuilder, String> {
-    check_pubkey(target_pubkey)?;
-    check_relay_role(new_role)?;
-    let tags = vec![
-        tag(vec!["p", &target_pubkey.to_ascii_lowercase()])?,
-        tag(vec!["role", new_role])?,
-    ];
-    Ok(EventBuilder::new(Kind::Custom(9032), "").tags(tags))
-}
-
 // ── NIP-IA identity archival ─────────────────────────────────────────────────
 //
 // kind:9035 archive request, kind:9036 unarchive request.
@@ -756,47 +733,12 @@ pub fn build_dm_hide(channel_id: &str) -> Result<EventBuilder, String> {
     Ok(EventBuilder::new(Kind::Custom(41012), "").tags(tags))
 }
 
-/// Kind 30620 — replaceable workflow definition.
-///
-/// The `d` tag carries the workflow id; `h` tag carries the channel id; the
-/// content is the YAML definition. Same (pubkey, d) replaces the prior version.
-pub fn build_workflow_definition(
-    workflow_id: &str,
-    channel_id: &str,
-    yaml_definition: &str,
-) -> Result<EventBuilder, String> {
-    check_content(yaml_definition)?;
-    let tags = vec![tag(vec!["d", workflow_id])?, tag(vec!["h", channel_id])?];
-    Ok(EventBuilder::new(Kind::Custom(30620), yaml_definition.to_string()).tags(tags))
-}
+mod workflows;
 
-/// Kind 5 — NIP-09 deletion targeting a kind:30620 workflow definition.
-pub fn build_workflow_delete(
-    workflow_id: &str,
-    owner_pubkey_hex: &str,
-) -> Result<EventBuilder, String> {
-    let coord = format!("30620:{owner_pubkey_hex}:{workflow_id}");
-    let tags = vec![tag(vec!["a", &coord])?];
-    Ok(EventBuilder::new(Kind::Custom(5), "").tags(tags))
-}
-
-/// Kind 46020 — trigger a workflow run by id.
-pub fn build_workflow_trigger(workflow_id: &str) -> Result<EventBuilder, String> {
-    let tags = vec![tag(vec!["d", workflow_id])?];
-    Ok(EventBuilder::new(Kind::Custom(46020), "").tags(tags))
-}
-
-/// Kind 46030 — grant an approval token (with optional note).
-pub fn build_approval_grant(token: &str, note: Option<&str>) -> Result<EventBuilder, String> {
-    let tags = vec![tag(vec!["t", token])?];
-    Ok(EventBuilder::new(Kind::Custom(46030), note.unwrap_or("")).tags(tags))
-}
-
-/// Kind 46031 — deny an approval token (with optional note).
-pub fn build_approval_deny(token: &str, note: Option<&str>) -> Result<EventBuilder, String> {
-    let tags = vec![tag(vec!["t", token])?];
-    Ok(EventBuilder::new(Kind::Custom(46031), note.unwrap_or("")).tags(tags))
-}
+pub use workflows::{
+    build_approval_deny, build_approval_grant, build_workflow_definition, build_workflow_delete,
+    build_workflow_trigger,
+};
 
 // ── Transport ────────────────────────────────────────────────────────────────
 

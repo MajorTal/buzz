@@ -1336,6 +1336,13 @@ fn handle_switch_model_control(
         tracing::warn!("observer switch_model control frame missing modelId");
         return;
     };
+    // Opaque per-pick correlator, echoed on every result frame so the Desktop
+    // can ignore a replayed result for an earlier pick. Optional: absent on
+    // older Desktop clients, in which case the frames simply carry no id.
+    let request_id = payload
+        .get("requestId")
+        .and_then(|value| value.as_str())
+        .map(str::to_string);
 
     // A turn is in flight for this channel iff a task_map entry exists. The
     // agent is moved out of the pool during a turn, so the control oneshot is
@@ -1352,7 +1359,10 @@ fn handle_switch_model_control(
         if signal_in_flight_task(
             pool,
             channel_id,
-            ControlSignal::SwitchModel(model_id.to_string()),
+            ControlSignal::SwitchModel {
+                model_id: model_id.to_string(),
+                request_id: request_id.clone(),
+            },
         ) {
             "sent"
         } else {
@@ -1360,7 +1370,7 @@ fn handle_switch_model_control(
         }
     } else {
         // Idle path: validate against the cached catalog before invalidating.
-        match pool.switch_idle_agent_model(channel_id, model_id) {
+        match pool.switch_idle_agent_model(channel_id, model_id, request_id.clone()) {
             IdleSwitchResult::Switched => "switched",
             IdleSwitchResult::UnsupportedModel => "unsupported_model",
             IdleSwitchResult::NoIdleAgent => "no_active_turn",
@@ -1381,6 +1391,9 @@ fn handle_switch_model_control(
                 "type": "switch_model",
                 "status": status,
                 "modelId": model_id,
+                // Echo the correlator on the immediate ack so a `sent` /
+                // `turn_ending` / idle-path terminal frame matches the pick.
+                "requestId": request_id,
             }),
         );
     }
@@ -2465,6 +2478,9 @@ async fn tokio_main() -> Result<()> {
                         model_capabilities: None,
                         desired_model: config.model.clone(),
                         model_overridden: false,
+                        desired_model_request_id: None,
+                        desired_model_pending_ack: false,
+                        startup_effort: config.effort_level.clone(),
                         agent_name,
                         goose_system_prompt_supported: None,
                         protocol_version,
@@ -4463,6 +4479,43 @@ mod agent_draft_prompt_tests {
             .contains("add them explicitly with `buzz channels add-member` only when authorized"));
         assert!(prompt.contains("never changes membership automatically"));
     }
+
+    /// The base prompt must teach BOTH terminal dispositions with the flags
+    /// the CLI actually accepts.
+    ///
+    /// Completion used to be missing entirely: the prompt told agents the
+    /// harness "automatically records that you completed or errored", which
+    /// stopped being true when the harness lost the ability to emit
+    /// `completed` at all. So the only settling state in the protocol had no
+    /// instruction anywhere and no agent would ever produce one.
+    #[test]
+    fn shared_base_prompt_teaches_both_terminal_dispositions() {
+        let prompt = include_str!("base_prompt.md");
+        // Exact command strings — a prompt teaching a flag the parser rejects
+        // is worse than no instruction. `--state` was documented once and
+        // does not exist.
+        assert!(
+            prompt.contains("buzz dispositions emit --request <event-id> --disposition completed")
+        );
+        assert!(
+            prompt.contains("buzz dispositions emit --request <event-id> --disposition refused")
+        );
+        assert!(
+            !prompt.contains("--state"),
+            "the CLI flag is --disposition; --state does not exist"
+        );
+        // The harness cannot observe completion, so the agent must be told
+        // that recording it is its own job.
+        assert!(prompt.contains("You are the only party that can say a request"));
+        assert!(prompt.contains("never records completion on your"));
+        // Must be explicit that the disposition supplements the reply, never
+        // replaces it — a disposition that's only a signed event with no
+        // human-readable explanation in the channel is a silent failure by
+        // the base prompt's own "if it isn't published, it didn't happen" rule.
+        assert!(prompt.contains("not instead of it"));
+        // And that a terminal claim cannot be taken back in v1.
+        assert!(prompt.contains("**final**"));
+    }
 }
 
 fn default_heartbeat_prompt() -> String {
@@ -4580,6 +4633,7 @@ struct PoolStartup {
     extra_env: Vec<(String, String)>,
     has_generated_codex_config: bool,
     model: Option<String>,
+    effort_level: Option<String>,
     observer: Option<observer::ObserverHandle>,
 }
 
@@ -4592,6 +4646,7 @@ impl PoolStartup {
             extra_env: config.persona_env_vars.clone(),
             has_generated_codex_config: config.has_generated_codex_config,
             model: config.model.clone(),
+            effort_level: config.effort_level.clone(),
             observer,
         }
     }
@@ -4659,6 +4714,9 @@ async fn initialize_agent_pool(
                             model_capabilities: None,
                             desired_model: startup.model.clone(),
                             model_overridden: false,
+                            desired_model_request_id: None,
+                            desired_model_pending_ack: false,
+                            startup_effort: startup.effort_level.clone(),
                             agent_name,
                             goose_system_prompt_supported: None,
                             protocol_version,
@@ -6751,6 +6809,7 @@ mod build_mcp_servers_tests {
             typing_enabled: true,
             memory_enabled: false,
             model: None,
+            effort_level: None,
             session_title: None,
             permission_mode: config::PermissionMode::BypassPermissions,
             respond_to: config::RespondTo::Anyone,
@@ -6974,6 +7033,7 @@ mod error_outcome_emission_tests {
             typing_enabled: true,
             memory_enabled: false,
             model: None,
+            effort_level: None,
             session_title: None,
             permission_mode: config::PermissionMode::BypassPermissions,
             respond_to: config::RespondTo::Anyone,
@@ -7020,6 +7080,9 @@ mod error_outcome_emission_tests {
             model_capabilities: None,
             desired_model: None,
             model_overridden: false,
+            desired_model_request_id: None,
+            desired_model_pending_ack: false,
+            startup_effort: None,
             agent_name: "unknown".into(),
             goose_system_prompt_supported: None,
             // Error branches under test never read this; 1 is the legacy
