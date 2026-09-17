@@ -2,9 +2,8 @@ import * as React from "react";
 import { RefreshCcw } from "lucide-react";
 
 import { useAppShell } from "@/app/AppShellContext";
-import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
-import { useChannelsQuery, useOpenDmMutation } from "@/features/channels/hooks";
+import { useChannelsQuery } from "@/features/channels/hooks";
 import { RightAuxiliaryPane } from "@/features/channels/ui/RightAuxiliaryPane";
 import { ChannelManagementSheet } from "@/features/channels/ui/ChannelManagementSheet";
 import {
@@ -29,6 +28,7 @@ import { useHomeInboxAutoSelection } from "@/features/home/useHomeInboxAutoSelec
 import { useHomeInboxContextMessages } from "@/features/home/useHomeInboxContextMessages";
 import { useHomePersonalInbox } from "@/features/home/useHomePersonalInbox";
 import { useInboxThreadContext } from "@/features/home/useInboxThreadContext";
+import { useHiddenDmInboxNavigation } from "@/features/home/useHiddenDmInboxNavigation";
 import {
   type ProfilePanelTab,
   type ProfilePanelView,
@@ -62,7 +62,7 @@ import { useRelaySelfQuery } from "@/features/moderation/hooks";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { useRemindLater } from "@/features/reminders/ui/RemindMeLaterProvider";
 import { deleteMessage, sendChannelMessage } from "@/shared/api/tauri";
-import type { HomeFeedResponse } from "@/shared/api/types";
+import type { Channel, HomeFeedResponse } from "@/shared/api/types";
 import { KIND_REACTION } from "@/shared/constants/kinds";
 import { topChromeInset } from "@/shared/layout/chromeLayout";
 import { cn } from "@/shared/lib/cn";
@@ -73,6 +73,7 @@ import { AUXILIARY_PANEL_SINGLE_COLUMN_BREAKPOINT_PX } from "@/shared/layout/Aux
 import { useHistorySearchState } from "@/shared/hooks/useHistorySearchState";
 import { ProfilePanelProvider } from "@/shared/context/ProfilePanelContext";
 import { Button } from "@/shared/ui/button";
+import { HomeMembersSidebarOverlay } from "./HomeMembersSidebarOverlay";
 
 const INBOX_SEARCH_KEYS = [
   "item",
@@ -168,9 +169,9 @@ export function HomeView({
   const [managedChannelId, setManagedChannelId] = React.useState<string | null>(
     null,
   );
-  const { goChannel } = useAppNavigation();
-  const openDmMutation = useOpenDmMutation();
-  const openDm = openDmMutation.mutateAsync;
+  const [membersChannel, setMembersChannel] = React.useState<Channel | null>(
+    null,
+  );
   const handleUserSelectItem = React.useCallback(
     (itemId: string | null) => {
       setAutoSelectedEventId(null);
@@ -216,13 +217,6 @@ export function HomeView({
   const [emptyDeleteId, setEmptyDeleteId] = React.useState<string | null>(null);
   const [editTargetId, setEditTargetId] = React.useState<string | null>(null);
   const [isSendingReply, setIsSendingReply] = React.useState(false);
-  const handleOpenDm = React.useCallback(
-    async (pubkeys: string[]) => {
-      const dm = await openDm({ pubkeys });
-      await goChannel(dm.id);
-    },
-    [goChannel, openDm],
-  );
   const { activeReminderEventIds, openReminder } = useRemindLater();
   const [localRepliesByItemId, setLocalRepliesByItemId] = React.useState<
     Record<string, InboxReply[]>
@@ -460,6 +454,19 @@ export function HomeView({
     }
     return null;
   }, [filteredItems, selectedConversationId, selectedEventId]);
+  const {
+    canOpenSelected,
+    handleOpenDirect,
+    handleOpenDm,
+    handleOpenSelectedContext,
+    isReopenPending,
+    isReopenErrored,
+  } = useHiddenDmInboxNavigation({
+    availableChannelIds,
+    currentPubkey,
+    onOpenContext,
+    selectedItem,
+  });
   const deleteInboxMessage = React.useCallback(
     async (eventId: string) => {
       const channelId = selectedItem?.item.channelId;
@@ -698,17 +705,9 @@ export function HomeView({
               onFilterChange={handleFilterChange}
               onMarkRead={handleMarkItemRead}
               onMarkUnread={markItemUnread}
-              onOpenDirect={(item) => {
-                const channelId = item.item.channelId;
-                if (!channelId) {
-                  return;
-                }
-                onOpenContext(
-                  channelId,
-                  item.id,
-                  getThreadReference(item.item.tags).rootId,
-                );
-              }}
+              onOpenDirect={handleOpenDirect}
+              isReopenPending={isReopenPending}
+              isReopenErrored={isReopenErrored}
               onRemindLater={(item) => {
                 const channelId = item.item.channelId;
                 if (!channelId) {
@@ -785,10 +784,7 @@ export function HomeView({
             <InboxDetailPane
               agentPubkeys={inboxAgentPubkeys}
               canDelete={canDelete}
-              canOpenChannel={Boolean(
-                selectedItem?.item.channelId &&
-                  availableChannelIds.has(selectedItem.item.channelId),
-              )}
+              canOpenChannel={canOpenSelected}
               canReply={canReply}
               channel={selectedChannel}
               contextChannelName={selectedChannel?.name ?? null}
@@ -819,13 +815,16 @@ export function HomeView({
                 if (!selectedItem || !canDelete) return;
                 void deleteInboxMessage(selectedItem.id);
               }}
+              onDeleteMessage={deleteInboxMessage}
               onManageChannel={(channelId) => {
                 handleCloseProfilePanel();
                 setManagedChannelId(channelId);
               }}
               onEditSave={editMessage}
               onRequestEmptyEditDelete={setEmptyDeleteId}
-              onOpenContext={onOpenContext}
+              onOpenContext={handleOpenSelectedContext}
+              reopenPending={isReopenPending(selectedItem?.item.channelId)}
+              reopenErrored={isReopenErrored(selectedItem?.item.channelId)}
               onSendReply={async ({
                 content,
                 mediaTags,
@@ -973,6 +972,7 @@ export function HomeView({
                 channel={managedChannel}
                 currentPubkey={currentPubkey}
                 layout="split"
+                onOpenMembers={() => setMembersChannel(managedChannel)}
                 onOpenChange={(nextOpen) => {
                   if (!nextOpen) {
                     setManagedChannelId(null);
@@ -984,6 +984,11 @@ export function HomeView({
           ) : null}
         </div>
       </div>
+      <HomeMembersSidebarOverlay
+        channel={membersChannel}
+        currentPubkey={currentPubkey}
+        onClose={() => setMembersChannel(null)}
+      />
     </ProfilePanelProvider>
   );
 }
